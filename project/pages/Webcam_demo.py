@@ -12,5 +12,16 @@ st.write("TRY DI WA")
 enable = st.checkbox("Enable camera")
 picture = st.camera_input("Take a picture", disabled=not enable)
 
+# แสดงภาพ
 if picture:
     st.image(picture)
+
+# -------------------- Upload File --------------------
+
+st.write("Uploading File")
+st.markdown("-------")
+image = st.file_uploader("Please upload an image", type=["png","jpg","jpeg"])
+
+# แสดงภาพ
+if image is not None:
+    st.image(image)
