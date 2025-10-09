@@ -1,47 +1,37 @@
-import streamlit as st
-import requests
-import os
 from dotenv import load_dotenv
-
-# โหลดไฟล์ .env
 load_dotenv()
 
-# ใช้ค่า API key จาก .env
-openai_api_key = os.getenv("OPENAI_API_KEY")
-usda_api_key = os.getenv("USDA_API_KEY")
+import os
+import streamlit as st
+API_KEY = os.getenv("USDA_API_KEY")
 
-# ฟังก์ชันค้นหาข้อมูลอาหารจาก USDA API
-def get_food_data(food_item):
-    url = f"https://api.nal.usda.gov/fdc/v1/foods/search?query={food_item}&api_key={usda_api_key}"
-    response = requests.get(url)
-    data = response.json()
-    return data['foods'][0] if data['foods'] else None
+st.set_page_config(
+    page_title="CALORE BOT",
+    page_icon="🤖",
+) 
 
-# ฟังก์ชันตอบคำถามโดยใช้ RAG
-def rag_chatbot(query):
-    # Retrieval: ดึงข้อมูลอาหารจาก USDA API
-    food_info = get_food_data(query)
-    
-    if food_info:
-        # ข้อมูลอาหารจาก USDA
-        food_name = food_info['description']
-        calories = food_info['foodNutrients'][0]['value']  # แคลอรี่
-        protein = food_info['foodNutrients'][1]['value']   # โปรตีน
-        carbs = food_info['foodNutrients'][2]['value']     # คาร์โบไฮเดรต
-        fat = food_info['foodNutrients'][3]['value']       # ไขมัน
-        
-        # สร้างคำตอบจากข้อมูลที่ได้
-        response = f"ข้อมูลของ {food_name}:\n- แคลอรี่: {calories} kcal\n- โปรตีน: {protein} g\n- คาร์โบไฮเดรต: {carbs} g\n- ไขมัน: {fat} g"
-    else:
-        # หากไม่พบข้อมูล
-        response = "ไม่พบข้อมูลเกี่ยวกับอาหารนี้ในฐานข้อมูล"
-    
-    return response
 
-# Streamlit UI
-st.title("Food Nutrition Chatbot")
+st.title("CALORE Bot")
 
-query = st.text_input("ถามเกี่ยวกับข้อมูลอาหาร (เช่น 'ข้าวกล้อง', 'แอปเปิ้ล', 'สเต็ก')")
-if query:
-    answer = rag_chatbot(query)
-    st.write(answer)
+# Initialize chat history
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# Display chat messages from history on app rerun
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# React to user input
+if prompt := st.chat_input("What is up?"):
+    # Display user message in chat message container
+    st.chat_message("user").markdown(prompt)
+    # Add user message to chat history
+    st.session_state.messages.append({"role": "user", "content": prompt})
+
+    response = f"Echo: {prompt}"
+    # Display assistant response in chat message container
+    with st.chat_message("assistant"):
+        st.markdown(response)
+    # Add assistant response to chat history
+    st.session_state.messages.append({"role": "assistant", "content": response})
