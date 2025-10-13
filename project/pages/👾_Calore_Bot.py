@@ -2,14 +2,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
-import re
-import requests
 import streamlit as st
+import sys
+import requests
+import re
+
+# ✅ ใช้ OpenAI SDK v1
 from openai import OpenAI
 
-API_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-MODEL   = st.secrets.get("MODEL")  # ใช้ค่าจาก secrets; ถ้าไม่ตั้งจะ fallback ข้างล่าง
-USDA_API_KEY = st.secrets.get("USDA_API_KEY") or os.getenv("USDA_API_KEY")
+API_KEY = os.getenv("OPENAI_API_KEY")
+MODEL = os.getenv("MODEL")
+USDA_API_KEY = os.getenv("USDA_API_KEY")
 
 st.set_page_config(
     page_title="CALORE BOT",
@@ -27,7 +30,7 @@ BOT_PROMPT = (
     "Keep it factual and organized with bullet points."
 )
 
-# ------------- USDA RAG -------------
+# ----------------------------- RAG ---------------------------------
 def get_food_data(food_item):
     if not USDA_API_KEY:
         return None
@@ -55,7 +58,11 @@ def get_food_data(food_item):
             continue
     return None  # fallback ไป OpenAI
 
+
 def rag_chatbot(query, food_name=None):
+    # ใช้ OpenAI SDK v1
+    client = OpenAI(api_key=API_KEY)
+
     food_info = get_food_data(food_name or query)
     if not food_info:
         return None   # ให้ตัวเรียกไปใช้ OpenAI ต่อ
@@ -71,6 +78,7 @@ def rag_chatbot(query, food_name=None):
 
     cal  = pick("208"); protein = pick("203"); fat = pick("204"); carb = pick("205")
 
+    # ตอบสั้น/ยาวตามที่คุณตั้ง แต่ระบุแหล่งที่มาให้ชัด
     context = (
         f"Name: {name}\n"
         f"Calories: {cal} kcal per 100g\n"
@@ -98,9 +106,8 @@ def rag_chatbot(query, food_name=None):
         },
     ]
 
-    client = OpenAI(api_key=API_KEY)
     resp = client.chat.completions.create(
-        model=MODEL or "gpt-4o-mini",
+        model=MODEL or "gpt-3.5-turbo",
         messages=messages,
         temperature=0,
         top_p=1,
@@ -108,7 +115,8 @@ def rag_chatbot(query, food_name=None):
         frequency_penalty=0,
     )
     return resp.choices[0].message.content.strip()
-# --------- /USDA RAG ---------
+# --------------------------- /RAG ----------------------------------
+
 
 # อาหารไทยเป็นอังกฤษ (บางส่วน)
 THAI_FOOD_MAP = {
@@ -123,20 +131,28 @@ FOOD_WORDS = [
 ]
 
 def detect_food_from_text(text: str) -> str | None:
-    """ตรวจจับชื่ออาหารจากข้อความผู้ใช้"""
+    """ตรวจจับชื่ออาหารจากข้อความผู้ใช้ (กัน None/ชนิดอื่นไว้ด้วย)"""
+    if not text or not isinstance(text, str):
+        return None
+
     t = text.lower().strip()
 
+    # ลองจับชื่ออาหารไทยดูก่อน
     for th, en in THAI_FOOD_MAP.items():
         if th in t:
             return en  # คืนชื่ออังกฤษเพื่อใช้ค้นใน USDA
 
+    # ให้ลองจับคำอังกฤษที่รู้จัก
     for w in FOOD_WORDS:
         if w in t:
             return w
 
+    # ลอง regex ดู (อาจจับคำยาวๆ ได้)
     m = re.search(r"(fried rice|green curry|tom yum|pad thai|hainanese chicken rice)", t)
     if m:
         return m.group(1)
+
+    # ไม่เจอ
     return None
 
 FOLLOWUP_HINTS = [
@@ -145,81 +161,98 @@ FOLLOWUP_HINTS = [
 ]
 
 def is_followup(text: str) -> bool:
-    t = text.strip().lower()
+    t = (text or "").strip().lower()
     return (detect_food_from_text(t) is None) and any(w in t for w in FOLLOWUP_HINTS)
 
-# ---------- LLM Client Wrapper (รองรับ SDK v1) ----------
-class LLMClient:
-    def __init__(self, api_key: str, model_name: str | None):
-        if not api_key:
-            raise RuntimeError("OPENAI_API_KEY not set")
-        self.client = OpenAI(api_key=api_key)
-        self.model_name = model_name or "gpt-4o-mini"
 
-    def chat(self, messages, temperature=0, top_p=1, presence_penalty=0, frequency_penalty=0):
-        # คง BOT_PROMPT เดิมไว้เป็น system message แรก
-        final_messages = [{"role": "system", "content": BOT_PROMPT}]
-        final_messages.extend(messages)
-
-        resp = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=final_messages,
-            temperature=temperature,
-            top_p=top_p,
-            presence_penalty=presence_penalty,
-            frequency_penalty=frequency_penalty,
-        )
-        return resp.choices[0].message.content.strip()
-
-# ---------- Session State ----------
 def init_session_state():
+    """Initialize session state variables"""
     if "last_food" not in st.session_state:
         st.session_state.last_food = ""
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "llm_client" not in st.session_state:
-        try:
-            st.session_state.llm_client = LLMClient(API_KEY, MODEL)
-        except Exception:
-            # Fallback: ไม่ให้แอปพังแม้ไม่มีคีย์
-            class EchoClient:
-                def chat(self, messages, **kwargs):
-                    if not messages:
-                        return "(no messages)"
-                    last = messages[-1].get("content", "")
-                    return "(LLM unavailable) I would respond to: '" + last + "'"
-            st.session_state.llm_client = EchoClient()
+        # Create a safe llm_client: try OpenAI if available and configured,
+        # otherwise provide a lightweight fallback that avoids AttributeError.
+        def create_llm_client():
+            try:
+                if not API_KEY:
+                    raise RuntimeError("OPENAI_API_KEY not set")
+
+                model_name = MODEL or "gpt-3.5-turbo"
+
+                class OpenAIClient:
+                    def __init__(self, api_key, model):
+                        # ✅ ใช้ SDK v1
+                        self.client = OpenAI(api_key=api_key)
+                        self.model = model
+
+                    def chat(self, messages):
+                        final_messages = [{"role": "system", "content": BOT_PROMPT}]
+                        final_messages.extend(messages)
+
+                        resp = self.client.chat.completions.create(
+                            model=self.model,
+                            messages=final_messages,
+                            temperature=0,
+                            top_p=1,
+                            presence_penalty=0,
+                            frequency_penalty=0,
+                        )
+                        return resp.choices[0].message.content.strip()
+
+                return OpenAIClient(API_KEY, model_name)
+            except Exception:
+                # Fallback: a minimal client that echoes the last user message
+                class EchoClient:
+                    def chat(self, messages):
+                        if not messages:
+                            return "(no messages)"
+                        last = messages[-1].get("content", "")
+                        return "(LLM unavailable) I would respond to: '" + last + "'"
+
+                return EchoClient()
+
+        st.session_state.llm_client = create_llm_client()
 
 def display_chat_messages():
+    """Display chat messages"""
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-# ---------- UI ----------
+
 init_session_state()
 
 st.title("CALORE Bot")
-st.write("Type a message to talk with Calore Bot!")
 
-# แสดงประวัติแชท
-display_chat_messages()
+# Initialize chat history
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-# รับข้อความผู้ใช้
+# Display chat messages from history on app rerun
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# React to user input
 if prompt := st.chat_input("Type your message here..."):
-    # เก็บข้อความผู้ใช้
+    # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # ตรวจจับชื่ออาหารและจำล่าสุด
+    # ตรวจจับชื่ออาหารจากข้อความ และจำไว้ใน session
     food_in_msg = detect_food_from_text(prompt)
     if food_in_msg:
         st.session_state.last_food = food_in_msg
 
+    # Display user message
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # ตอบกลับ
+    # Generate and display assistant response
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
+            # ใช้ชื่ออาหารล่าสุดถ้าไม่มีในข้อความนี้
             query_food = detect_food_from_text(prompt)
             if query_food:
                 st.session_state.last_food = query_food
@@ -229,37 +262,26 @@ if prompt := st.chat_input("Type your message here..."):
                 query_food = None
 
             # เรียก RAG ถ้ามีชื่ออาหารให้ค้น
-            response_text = None
+            response = None
             if query_food:
-                response_text = rag_chatbot(prompt, query_food)
+                response = rag_chatbot(prompt, query_food)
 
-            # ถ้าไม่มีข้อมูลหรือหาไม่เจอ ใช้โมเดลหลักตอบแทน
-            if response_text is None:
-                response_text = st.session_state.llm_client.chat(
-                    [{"role": "user", "content": prompt}],
-                    temperature=0,
-                    top_p=1,
-                    presence_penalty=0,
-                    frequency_penalty=0,
+            # ถ้าไม่ใช่อาหาร (และไม่ใช่ follow-up ที่พอระบุได้) → ขอโทษและขอข้อมูลเพิ่ม
+            if response is None and query_food is None:
+                response = (
+                    "ขอโทษนะครับ/ค่ะ ตอนนี้ยังระบุชื่ออาหารไม่ได้ "
+                    "ช่วยบอกชื่อเมนูให้ชัดเจนหน่อยได้ไหมครับ/คะ "
+                    "เช่น “ผัดไทย 1 จาน” หรือ “อกไก่ย่าง 150 กรัม”?"
                 )
 
-            st.markdown(response_text)
+            # ถ้าเป็นอาหารแต่ RAG ไม่เจอ → ให้โมเดลหลักตอบตาม BOT_PROMPT
+            if response is None and query_food is not None:
+                response = st.session_state.llm_client.chat(
+                    [{"role": "user", "content": prompt}]
+                )
 
-    # เก็บคำตอบบอท
-    st.session_state.messages.append({"role": "assistant", "content": response_text})
+            # แสดงผล
+            st.markdown(response)
 
-# ------------- SIDE BAR -------------
-st.sidebar.title("What is Calore Bot?")
-st.sidebar.text(
-    "Calore Bot is a chatbot that can tell you how healthy the food you're "
-    "looking for is, whether it's protein, calories, or the main ingredients of the food."
-)
-
-# ------------- FeedBack -------------
-with st.sidebar:
-    sentiment_mapping = ["one", "two", "three", "four", "five"]
-    selected = st.feedback("stars")
-    if selected is not None:
-        st.markdown(
-            f"You selected {sentiment_mapping[selected]} star(s). Thank you for feedback!"
-        )
+    # บันทึกคำตอบของบอท
+    st.session_state.messages.append({"role": "assistant", "content": response})
