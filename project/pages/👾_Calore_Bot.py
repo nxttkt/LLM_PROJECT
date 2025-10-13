@@ -266,14 +266,6 @@ if prompt := st.chat_input("Type your message here..."):
             if query_food:
                 response = rag_chatbot(prompt, query_food)
 
-            # ถ้าไม่ใช่อาหาร (และไม่ใช่ follow-up ที่พอระบุได้) → ขอโทษและขอข้อมูลเพิ่ม
-            if response is None and query_food is None:
-                response = (
-                    "ขอโทษนะครับ/ค่ะ ตอนนี้ยังระบุชื่ออาหารไม่ได้ "
-                    "ช่วยบอกชื่อเมนูให้ชัดเจนหน่อยได้ไหมครับ/คะ "
-                    "เช่น “ผัดไทย 1 จาน” หรือ “อกไก่ย่าง 150 กรัม”?"
-                )
-
             # ถ้าเป็นอาหารแต่ RAG ไม่เจอ → ให้โมเดลหลักตอบตาม BOT_PROMPT
             if response is None and query_food is not None:
                 response = st.session_state.llm_client.chat(
@@ -285,3 +277,4 @@ if prompt := st.chat_input("Type your message here..."):
 
     # บันทึกคำตอบของบอท
     st.session_state.messages.append({"role": "assistant", "content": response})
+
