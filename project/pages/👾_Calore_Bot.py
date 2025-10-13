@@ -6,7 +6,7 @@ import streamlit as st
 import sys
 import requests 
 API_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-MODEL = st.secrets.get("MODEL", "gpt-3.5-turbo")
+MODEL = st.secrets.get("MODEL", "gpt-4o-mini")
 USDA_API_KEY = st.secrets.get("USDA_API_KEY") or os.getenv("USDA_API_KEY")
 
 st.set_page_config(
@@ -279,5 +279,6 @@ with st.sidebar:
     if selected is not None:
         st.markdown(f"""You selected {sentiment_mapping[selected]} star(s).     
             Thank you for feedback!""")
+
 
 
