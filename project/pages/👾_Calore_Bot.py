@@ -16,7 +16,6 @@ st.set_page_config(
     page_icon="🤖",
 )
 
-# ---------------------------------------------------
 BOT_PROMPT = (
     "You are CALORE Bot. Respond in Thai with a detailed, structured nutrition report. "
     "If USDA/retrieval data is available, use it. If not, provide a clearly-labeled ESTIMATE "
@@ -27,7 +26,6 @@ BOT_PROMPT = (
     "4) คำแนะนำย่อเพื่อปรับแคลอรี่/สุขภาพ\n"
     "Keep it factual and organized with bullet points."
 )
-# ---------------------------------------------------
 
 # ------------- USDA RAG -------------
 def get_food_data(food_item):
@@ -126,8 +124,6 @@ FOOD_WORDS = [
 
 def detect_food_from_text(text: str) -> str | None:
     """ตรวจจับชื่ออาหารจากข้อความผู้ใช้"""
-    if not text or not isinstance(text, str):  # ✅ กัน text เป็น None หรือ type อื่น
-        return None
     t = text.lower().strip()
 
     for th, en in THAI_FOOD_MAP.items():
@@ -222,21 +218,22 @@ if prompt := st.chat_input("Type your message here..."):
         st.markdown(prompt)
 
     # ตอบกลับ
-with st.chat_message("assistant"):
-    with st.spinner("Thinking..."):
-        query_food = detect_food_from_text(prompt)
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            query_food = detect_food_from_text(prompt)
+            if query_food:
+                st.session_state.last_food = query_food
+            elif is_followup(prompt) and st.session_state.last_food:
+                query_food = st.session_state.last_food
+            else:
+                query_food = None
 
-        # ถ้าไม่เจออาหารใหม่ แต่เป็นคำถามต่อเนื่อง → ใช้อาหารล่าสุด
-        if not query_food and is_followup(prompt) and st.session_state.last_food:
-            query_food = st.session_state.last_food
+            # เรียก RAG ถ้ามีชื่ออาหารให้ค้น
+            response_text = None
+            if query_food:
+                response_text = rag_chatbot(prompt, query_food)
 
-        response_text = None
-
-        if query_food:
-            st.session_state.last_food = query_food
-            response_text = rag_chatbot(prompt, query_food)
-
-            # ถ้า RAG ไม่เจอข้อมูลเลย → ให้โมเดลหลักตอบแทน
+            # ถ้าไม่มีข้อมูลหรือหาไม่เจอ ใช้โมเดลหลักตอบแทน
             if response_text is None:
                 response_text = st.session_state.llm_client.chat(
                     [{"role": "user", "content": prompt}],
@@ -245,15 +242,8 @@ with st.chat_message("assistant"):
                     presence_penalty=0,
                     frequency_penalty=0,
                 )
-        else:
-            # ❗️ไม่ใช่อาหาร → ให้ขอโทษและถามข้อมูลเพิ่มโดยตรง
-            response_text = (
-                "ขอโทษนะครับ/ค่ะ ตอนนี้ยังระบุชื่ออาหารไม่ได้ "
-                "ช่วยบอกชื่อเมนูให้ชัดเจนหน่อยได้ไหมครับ/คะ "
-                "เช่น “ผัดไทย 1 จาน” หรือ “อกไก่ย่าง 150 กรัม”?"
-            )
 
-        st.markdown(response_text)
+            st.markdown(response_text)
 
     # เก็บคำตอบบอท
     st.session_state.messages.append({"role": "assistant", "content": response_text})
@@ -273,5 +263,3 @@ with st.sidebar:
         st.markdown(
             f"You selected {sentiment_mapping[selected]} star(s). Thank you for feedback!"
         )
-
-
