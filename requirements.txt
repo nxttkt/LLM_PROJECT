@@ -1,8 +1,9 @@
 streamlit
 requests
 python-dotenv
-openai
+openai>=1.0.0
 streamlit-option-menu
 pandas
 numpy
+
 
