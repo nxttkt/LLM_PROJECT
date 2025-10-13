@@ -4,11 +4,40 @@ load_dotenv()
 import os
 import streamlit as st
 import sys
-import requests
-from openai import OpenAI
-API_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-MODEL   = st.secrets.get("MODEL")
+import requests 
+
+API_KEY = st.secrets.get("OPENAI_API_KEY")
+MODEL = st.secrets.get("MODEL")
 USDA_API_KEY = st.secrets.get("USDA_API_KEY")
+
+# --- OpenAI v1 compatibility shim (ไม่แตะฟังก์ชัน/ลอจิกเดิมของคุณ) ---
+# ทำให้โค้ดเดิมที่เรียก openai.ChatCompletion.create(...) ใช้ได้กับ openai>=1.0.0
+try:
+    import openai  # จะเป็นแพ็กเกจเวอร์ชันใหม่
+    from openai import OpenAI as _OpenAI
+    from types import SimpleNamespace
+
+    _compat_client = None
+
+    def _ensure_client():
+        global _compat_client
+        if _compat_client is None:
+            # รองรับทั้งกรณี set ผ่าน openai.api_key (ตามโค้ดเดิมของคุณ) และผ่าน ENV
+            key = getattr(openai, "api_key", None) or API_KEY
+            _compat_client = _OpenAI(api_key=key)
+        return _compat_client
+
+    def _chat_completion_create(**kwargs):
+        # โปรยต่อไปยัง client.chat.completions.create ของ SDK v1
+        client = _ensure_client()
+        return client.chat.completions.create(**kwargs)
+
+    # ผูก ChatCompletion.create ให้มีอยู่เสมอ (ทับของเดิมถ้ามี)
+    openai.ChatCompletion = SimpleNamespace(create=_chat_completion_create)
+except Exception:
+    # ถ้า import openai ไม่ได้ ก็ไม่แก้ (แอปยังมี fallback EchoClient ของคุณอยู่)
+    pass
+# --- /compat shim ---
 
 st.set_page_config(
     page_title="CALORE BOT",
@@ -106,8 +135,8 @@ def rag_chatbot(query, food_name=None):
         "content": f"CONTEXT:\n{context}\n\nQUESTION: {query}\nAnswer in {lang}.",
     },
 ]
-    client = OpenAI(api_key=API_KEY)
-    resp =client.chat.completions.create(
+
+    resp = openai.ChatCompletion.create(
     model=MODEL or "gpt-3.5-turbo",
     messages=messages,
     temperature=0,
@@ -192,7 +221,7 @@ def init_session_state():
                         final_messages.extend(messages)
                         
                         # messages should already be a list of {role, content}
-                        resp = client.chat.completions.create(
+                        resp = openai.ChatCompletion.create(
                             model=model_name,
                             messages=final_messages,
                             temperature=0,
@@ -275,7 +304,7 @@ if prompt := st.chat_input("Type your message here..."):
 
             # ถ้าไม่มีข้อมูลหรือหาไม่เจอ ใช้โมเดลหลักตอบแทน
             if response is None:
-                response = st.session_state.llm_client.chat.completions.create(
+                response = st.session_state.llm_client.chat(
                     [{"role": "user", "content": prompt}]
                 )
 
@@ -298,5 +327,3 @@ with st.sidebar:
     if selected is not None:
         st.markdown(f"""You selected {sentiment_mapping[selected]} star(s).     
             Thank you for feedback!""")
-
-
