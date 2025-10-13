@@ -126,6 +126,8 @@ FOOD_WORDS = [
 
 def detect_food_from_text(text: str) -> str | None:
     """ตรวจจับชื่ออาหารจากข้อความผู้ใช้"""
+    if not text or not isinstance(text, str):  # ✅ กัน text เป็น None หรือ type อื่น
+        return None
     t = text.lower().strip()
 
     for th, en in THAI_FOOD_MAP.items():
@@ -271,4 +273,5 @@ with st.sidebar:
         st.markdown(
             f"You selected {sentiment_mapping[selected]} star(s). Thank you for feedback!"
         )
+
 
