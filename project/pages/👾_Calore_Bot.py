@@ -5,9 +5,9 @@ import os
 import streamlit as st
 import sys
 import requests 
-API_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-MODEL = st.secrets.get("MODEL", "gpt-4o-mini")
-USDA_API_KEY = st.secrets.get("USDA_API_KEY") or os.getenv("USDA_API_KEY")
+API_KEY = os.getenv("OPENAI_API_KEY")
+MODEL = os.getenv("MODEL")
+USDA_API_KEY = os.getenv("USDA_API_KEY")
 
 st.set_page_config(
     page_title="CALORE BOT",
@@ -56,15 +56,12 @@ def get_food_data(food_item):
 
 
 def rag_chatbot(query, food_name=None):
-    if not API_KEY:
-        return None
-
-    from openai import OpenAI
-    client = OpenAI(api_key=API_KEY)
+    import openai
+    openai.api_key = API_KEY
 
     food_info = get_food_data(food_name or query)
     if not food_info:
-        return None
+        return None   #ให้ตัวเรียกไปใช้ OpenAI ต่อ
 
     name = food_info.get("description", "N/A")
     nutrients = food_info.get("foodNutrients", [])
@@ -76,38 +73,49 @@ def rag_chatbot(query, food_name=None):
         return None
 
     cal  = pick("208"); protein = pick("203"); fat = pick("204"); carb = pick("205")
+    
 
-    import re
-    is_english = bool(re.search(r"[A-Za-z]", query))
-    lang = "English" if is_english else "Thai"
-
+    # ตอบสั้น/ยาวตามที่คุณตั้ง แต่ระบุแหล่งที่มาให้ชัด
     context = (
         f"Name: {name}\n"
         f"Calories: {cal} kcal per 100g\n"
         f"Protein: {protein} g\n"
         f"Fat: {fat} g\n"
         f"Carbohydrate: {carb} g\n"
+       
     )
+
+    import re
+
+    # ตรวจภาษาอย่างง่ายจาก query
+    is_english = bool(re.search(r"[A-Za-z]", query))
+    lang = "English" if is_english else "Thai"
 
     messages = [
-        {"role": "system",
-         "content": "You are a nutrition assistant. Use only the given CONTEXT. "
-                    "Answer briefly with numeric facts in the requested language "
-                    "(per 100 g, per serving if present)."},
-        {"role": "user",
-         "content": f"CONTEXT:\n{context}\n\nQUESTION: {query}\nAnswer in {lang}."},
-    ]
+        {
+        "role": "system",
+        "content": (
+            "You are a nutrition assistant. Use only the given CONTEXT. "
+            "Answer briefly with numeric facts in the requested language "
+            "(per 100 g, per serving if present)."
+        ),
+    },
+    {
+        "role": "user",
+        "content": f"CONTEXT:\n{context}\n\nQUESTION: {query}\nAnswer in {lang}.",
+    },
+]
 
-    resp = client.chat.completions.create(
-        model=MODEL,              # ใช้ค่าที่คุณตั้งไว้ด้านบน
-        messages=messages,
-        temperature=0,
-        top_p=1,
-        presence_penalty=0,
-        frequency_penalty=0,
-    )
-    return resp.choices[0].message.content.strip()
+    resp = openai.ChatCompletion.create(
+    model=MODEL or "gpt-3.5-turbo",
+    messages=messages,
+    temperature=0,
+    top_p=1,
+    presence_penalty=0,
+    frequency_penalty=0,
+)
 
+    return resp.choices[0].message["content"].strip() 
 
 # RAG
 
@@ -158,26 +166,32 @@ def is_followup(text: str) -> bool:
     return (detect_food_from_text(t) is None) and any(w in t for w in FOLLOWUP_HINTS)
 
 def init_session_state():
+    """Initialize session state variables"""
     if "last_food" not in st.session_state:
         st.session_state.last_food = ""
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "llm_client" not in st.session_state:
-
+        # Create a safe llm_client: try OpenAI if available and configured,
+        # otherwise provide a lightweight fallback that avoids AttributeError.
         def create_llm_client():
             try:
-                if not API_KEY:
-                    raise RuntimeError("OPENAI_API_KEY not set in secrets or env")
+                import openai
 
-                from openai import OpenAI
-                client = OpenAI(api_key=API_KEY)
-                model_name = MODEL
+                if not API_KEY:
+                    raise RuntimeError("OPENAI_API_KEY not set")
+
+                openai.api_key = API_KEY
+                model_name = MODEL or "gpt-3.5-turbo"
 
                 class OpenAIClient:
                     def chat(self, messages):
+
                         final_messages = [{"role": "system", "content": BOT_PROMPT}]
                         final_messages.extend(messages)
-                        resp = client.chat.completions.create(
+                        
+                        # messages should already be a list of {role, content}
+                        resp = openai.ChatCompletion.create(
                             model=model_name,
                             messages=final_messages,
                             temperature=0,
@@ -188,17 +202,21 @@ def init_session_state():
                         return resp.choices[0].message.content.strip()
 
                 return OpenAIClient()
-
-            except Exception as e:
-                st.error(f"LLM init error: {e}")  # โชว์สาเหตุจริง
+            except Exception:
+                # Fallback: a minimal client that echoes the last user message
                 class EchoClient:
                     def chat(self, messages):
-                        last = (messages[-1].get("content", "") if messages else "")
-                        return "(LLM unavailable) I would respond to: '" + last + "'"
+                        if not messages:
+                            return "(no messages)"
+                        # Return a helpful fallback response instead of raising
+                        last = messages[-1].get("content", "")
+                        return (
+                            "(LLM unavailable) I would respond to: '" + last + "'"
+                        )
+
                 return EchoClient()
 
-        st.session_state.llm_client = create_llm_client()
-
+        st.session_state.llm_client = create_llm_client() 
 
 def display_chat_messages():
     """Display chat messages"""
@@ -279,6 +297,3 @@ with st.sidebar:
     if selected is not None:
         st.markdown(f"""You selected {sentiment_mapping[selected]} star(s).     
             Thank you for feedback!""")
-
-
-
