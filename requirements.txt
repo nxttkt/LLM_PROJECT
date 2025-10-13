@@ -1,6 +1,7 @@
-streamlit
-pandas
-numpy
-streamlit-option-menu
+streamlit>=1.37
 requests
 python-dotenv
+openai>=1.52.0
+streamlit-option-menu
+pandas
+numpy
