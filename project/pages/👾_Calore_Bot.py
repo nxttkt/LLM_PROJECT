@@ -192,7 +192,7 @@ def init_session_state():
                         final_messages.extend(messages)
                         
                         # messages should already be a list of {role, content}
-                        resp = openai.ChatCompletion.create(
+                        resp = client.chat.completions.create(
                             model=model_name,
                             messages=final_messages,
                             temperature=0,
@@ -275,7 +275,7 @@ if prompt := st.chat_input("Type your message here..."):
 
             # ถ้าไม่มีข้อมูลหรือหาไม่เจอ ใช้โมเดลหลักตอบแทน
             if response is None:
-                response = st.session_state.llm_client.chat(
+                response = st.session_state.llm_client.chat.completions.create(
                     [{"role": "user", "content": prompt}]
                 )
 
@@ -298,4 +298,5 @@ with st.sidebar:
     if selected is not None:
         st.markdown(f"""You selected {sentiment_mapping[selected]} star(s).     
             Thank you for feedback!""")
+
 
