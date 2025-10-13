@@ -45,7 +45,7 @@ st.set_page_config(
 ) 
 
 BOT_PROMPT = (
-    "You are CALORE Bot. Respond in Thai with a detailed, structured nutrition report. "
+    "You are CALORE Bot. Respond in {LANG} with a detailed, structured nutrition report. "
     "If USDA/retrieval data is available, use it. If not, provide a clearly-labeled ESTIMATE "
     "based on common recipes WITHOUT asking follow-ups or apologizing. Include:\n"
     "1) พลังงานต่อ 100 กรัม และต่อ 1 ที่เสิร์ฟ (ช่วงค่าประมาณ)\n"
@@ -327,3 +327,4 @@ with st.sidebar:
     if selected is not None:
         st.markdown(f"""You selected {sentiment_mapping[selected]} star(s).     
             Thank you for feedback!""")
+
