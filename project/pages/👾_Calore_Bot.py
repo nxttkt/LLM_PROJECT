@@ -4,10 +4,11 @@ load_dotenv()
 import os
 import streamlit as st
 import sys
-import requests 
-API_KEY = os.getenv("OPENAI_API_KEY")
-MODEL = os.getenv("MODEL")
-USDA_API_KEY = os.getenv("USDA_API_KEY")
+import requests
+from openai import OpenAI
+API_KEY = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+MODEL   = st.secrets.get("MODEL")
+USDA_API_KEY = st.secrets.get("USDA_API_KEY")
 
 st.set_page_config(
     page_title="CALORE BOT",
@@ -105,8 +106,8 @@ def rag_chatbot(query, food_name=None):
         "content": f"CONTEXT:\n{context}\n\nQUESTION: {query}\nAnswer in {lang}.",
     },
 ]
-
-    resp = openai.ChatCompletion.create(
+    client = OpenAI(api_key=API_KEY)
+    resp =client.chat.completions.create(
     model=MODEL or "gpt-3.5-turbo",
     messages=messages,
     temperature=0,
@@ -297,3 +298,4 @@ with st.sidebar:
     if selected is not None:
         st.markdown(f"""You selected {sentiment_mapping[selected]} star(s).     
             Thank you for feedback!""")
+
