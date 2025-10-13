@@ -5,9 +5,9 @@ import os
 import streamlit as st
 import sys
 import requests 
-API_KEY = os.getenv("OPENAI_API_KEY")
-MODEL = os.getenv("MODEL")
-USDA_API_KEY = os.getenv("USDA_API_KEY")
+API_KEY = st.secrets["OPENAI_API_KEY"]
+MODEL = st.secrets["MODEL"]
+USDA_API_KEY = st.secrets["USDA_API_KEY"]
 
 st.set_page_config(
     page_title="CALORE BOT",
