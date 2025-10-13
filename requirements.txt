@@ -1,7 +1,8 @@
-streamlit>=1.37
+streamlit
 requests
 python-dotenv
-openai>=1.52.0
+openai
 streamlit-option-menu
 pandas
 numpy
+
