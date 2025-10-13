@@ -1,0 +1,6 @@
+streamlit
+pandas
+numpy
+streamlit-option-menu
+requests
+python-dotenv
